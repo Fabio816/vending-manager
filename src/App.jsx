@@ -55,8 +55,35 @@ import {
 
 // --- Variáveis de Ambiente (Garantidas pelo Canvas) ---
 
-// Usando um fallback caso a variável do ambiente não esteja definida (muito improvável)
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'vending-manager-app-default';
+// Definindo valores Padrão/Mock para que o app NÃO quebre se o ambiente não injetar as variáveis.
+// IMPORTANTE: Em um ambiente de produção real, a plataforma (Canvas) injeta os valores
+// CORRETOS e SEGUROS. Estes são apenas fallbacks para evitar erros de inicialização.
+
+const MOCK_FIREBASE_CONFIG = {
+  // Use um projectId mock para que a checagem de inicialização não falhe
+  projectId: "vending-manager-app-cc60b",
+  apiKey: "AIzaSyA8ly0McGkwbo-JiJsF0ZzAXMA30Mysvvo",
+  authDomain: "vending-manager-app-cc60b.firebaseapp.com",
+  messagingSenderId: "686687292222",
+  appId: "1:686687292222:web:847db02734c30b9f8f7a6f",
+  storageBucket: "vending-manager-app-cc60b.firebasestorage.app"
+};
+
+// 1. Variável __app_id (ID da aplicação)
+const appId = (typeof __app_id !== 'undefined' && __app_id) ? __app_id : 'vending-manager-app-default';
+
+// 2. Variável __firebase_config (Configuração de conexão)
+// Prioriza o valor injetado, senão usa o mock chumbado no código.
+const firebaseConfigString = (typeof __firebase_config !== 'undefined' && __firebase_config && __firebase_config !== '{}')
+    ? __firebase_config
+    : JSON.stringify(MOCK_FIREBASE_CONFIG);
+
+// 3. Variável __initial_auth_token (Token de Autenticação)
+// Não é possível chumbá-lo, deve ser null ou um token real injetado.
+const initialAuthToken = (typeof __initial_auth_token !== 'undefined' && __initial_auth_token)
+    ? __initial_auth_token
+    : null; 
+
 const apiKey = ""; // Mantemos vazia, a plataforma injeta para o Gemini API
 
 /**
@@ -195,34 +222,36 @@ export default function VendingMachineApp() {
   useEffect(() => {
     const initializeFirebase = async () => {
       let firebaseConfig = {};
-      const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
       
-      // LOGS ADICIONADOS AQUI PARA DIAGNÓSTICO
+      // LOGS PARA DIAGNÓSTICO
       console.log("--- INÍCIO DO DIAGNÓSTICO FIREBASE ---");
-      console.log(`1. Variável __app_id (App ID): ${appId}`);
-      console.log(`2. Variável __firebase_config (Config String): "${firebaseConfigString}"`);
+      console.log(`1. Variável appId (ID da aplicação): ${appId}`);
+      console.log(`2. Variável firebaseConfigString (Config String usada): "${firebaseConfigString}"`);
       
       try {
         firebaseConfig = JSON.parse(firebaseConfigString);
         console.log("3. Configuração do Firebase PARSEADA com sucesso:", firebaseConfig);
       } catch (e) {
         // A string JSON estava malformada
-        setFirebaseError(`Erro ao analisar JSON da configuração global do Firebase. String: "${firebaseConfigString}". Erro: ${e.message}`);
+        setFirebaseError(`Erro CRÍTICO: Falha ao analisar JSON da configuração. String: "${firebaseConfigString}". Erro: ${e.message}`);
         setLoading(false);
         console.error("ERRO: Falha ao analisar JSON de configuração.", e);
         return;
       }
       
-      const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-      console.log(`4. Variável __initial_auth_token (Token): ${initialAuthToken ? 'PRESENTE' : 'AUSENTE/null'}`);
+      console.log(`4. Variável initialAuthToken (Token): ${initialAuthToken ? 'PRESENTE' : 'AUSENTE/null'}`);
 
+      // Checar se o código está rodando com a configuração Mock (chumbada)
+      const isUsingMock = firebaseConfig.projectId === MOCK_FIREBASE_CONFIG.projectId;
+      
       try {
-        if (!firebaseConfig.projectId) {
-            // ERRO CRÍTICO: Configuração inválida, geralmente por causa da variável global vazia
-            const configType = firebaseConfigString === '{}' ? 'Variável global vazia ou ausente' : 'Objeto de configuração inválido';
-            throw new Error(`A configuração do Firebase (obtida de '__firebase_config') está inválida ou incompleta. Detalhes: \n\n- Tipo de Falha: ${configType}\n- Propriedade 'projectId' não encontrada.`);
+        if (isUsingMock) {
+          // Exibe o aviso de mock, mas permite a inicialização
+          setFirebaseError(
+            `ATENÇÃO (MODO MOCK): O ambiente de execução não forneceu a configuração correta do Firebase. O aplicativo está usando uma configuração dummy ('${MOCK_FIREBASE_CONFIG.projectId}').\n\n- O banco de dados não funcionará. Você pode navegar, mas não salvará dados.`
+          );
         }
-
+        
         // Inicializar o App Firebase (evitando inicialização duplicada)
         const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
         const authInstance = getAuth(app);
@@ -247,7 +276,7 @@ export default function VendingMachineApp() {
           setUser(currentUser);
         });
         
-        console.log("--- FIM DO DIAGNÓSTICO FIREBASE (Tudo ok até agora) ---");
+        console.log("--- FIM DO DIAGNÓSTICO FIREBASE ---");
 
         return () => unsubscribe();
 
@@ -266,16 +295,21 @@ export default function VendingMachineApp() {
 
   useEffect(() => {
     // Só carrega se houver DB e usuário autenticado
-    if (!user || !db) return; 
+    if (!user || !db || firebaseError) {
+      if (!user || !db) setLoading(true); // Se o user/db não estiver pronto, mantenha o loading
+      if (firebaseError) setLoading(false); // Se o erro for mock, permite renderizar sem loading
+      return; 
+    }
 
-    // Carregar Máquinas
+    // O caminho para os dados privados do usuário é:
+    // /artifacts/{appId}/users/{userId}/machines
     const machinesRef = collection(db, 'artifacts', appId, 'users', user.uid, 'machines');
     const unsubMachines = onSnapshot(machinesRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMachines(data);
     }, (error) => console.error("Erro ao carregar máquinas:", error));
 
-    // Carregar Transações
+    // /artifacts/{appId}/users/{userId}/transactions
     const transactionsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'transactions');
     const unsubTrans = onSnapshot(transactionsRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ 
@@ -284,7 +318,7 @@ export default function VendingMachineApp() {
         // Garantir que createdAt seja um objeto Date
         date: doc.data().createdAt instanceof Timestamp ? doc.data().createdAt.toDate() : (doc.data().createdAt || new Date())
       }));
-      // Ordenar por data decrescente (em memória)
+      // Ordenar por data decrescente (em memória, evitando orderBy no Firestore)
       data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setTransactions(data);
       setLoading(false); // Loading só para após carregar os dados
@@ -294,7 +328,7 @@ export default function VendingMachineApp() {
       unsubMachines();
       unsubTrans();
     };
-  }, [user, db]); // Depende do user e do DB estarem prontos
+  }, [user, db, firebaseError]); // Depende do user, DB e do erro (para parar o loading se for mock)
 
   // Limpar estado da IA ao trocar de tela
   useEffect(() => {
@@ -325,7 +359,7 @@ export default function VendingMachineApp() {
         .filter(t => t.machineId === m.id)
         .reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
       
-      // Lógica de baixo rendimento
+      // Lógica de baixo rendimento (exemplo simples: menos de R$50 de receita)
       if (machineRevenue < 50 && machineRevenue > 0) unprofitable++; 
     });
 
@@ -407,12 +441,21 @@ export default function VendingMachineApp() {
 
   // --- Ações (Dependem de 'user' e 'db') ---
 
+  // Função utilitária para verificar se o DB/Auth está pronto
+  const checkDbReady = () => {
+    if (!user || !db || firebaseError) {
+      const msg = "ERRO: Não é possível salvar/deletar. Firebase/Autenticação não inicializada ou está em modo MOCK.";
+      setAiResult(msg);
+      console.error(msg);
+      return false;
+    }
+    return true;
+  }
+
   const handleAddMachine = async (e) => {
     e.preventDefault();
-    if (!user || !db) {
-      setAiResult("ERRO: Não é possível salvar. Firebase/Autenticação não inicializada corretamente.");
-      return;
-    }
+    if (!checkDbReady()) return;
+
     const form = e.target;
     const newMachine = {
       name: form.name.value,
@@ -436,16 +479,15 @@ export default function VendingMachineApp() {
 
   const handleAddCollection = async (e) => {
     e.preventDefault();
-    if (!user || !db) {
-      setAiResult("ERRO: Não é possível salvar. Firebase/Autenticação não inicializada corretamente.");
-      return;
-    }
+    if (!checkDbReady()) return;
+    
     const form = e.target;
     const collectedAmount = parseFloat(form.amount.value);
     const restockedAmount = parseInt(form.restock.value) || 0;
     
     if (!selectedMachine) return;
 
+    // Calcula o custo dos itens repostos
     const cost = restockedAmount * selectedMachine.costPerItem;
 
     try {
@@ -481,10 +523,7 @@ export default function VendingMachineApp() {
   };
 
   const handleDeleteMachine = async () => {
-    if (!user || !db || !selectedMachine) {
-       setAiResult("ERRO: Não é possível deletar. Firebase/Autenticação não inicializada corretamente.");
-       return;
-    }
+    if (!checkDbReady() || !selectedMachine) return;
     
     // NOTA: Em um app real, use um modal de confirmação antes de excluir
     
@@ -501,13 +540,13 @@ export default function VendingMachineApp() {
 
   // --- Views ---
   
-  // BLOQUEIO CRÍTICO: Exibir erro se o Firebase não pôde ser configurado.
-  if (firebaseError) return (
+  // BLOQUEIO CRÍTICO: Exibir erro/aviso se o Firebase não pôde ser configurado.
+  if (firebaseError && firebaseError.includes("CRÍTICO")) return (
     <div className="flex flex-col h-screen items-center justify-center bg-red-50 p-8 text-red-800 text-center font-sans whitespace-pre-wrap rounded-xl m-4 shadow-lg border border-red-300">
       <AlertTriangle size={32} className="mb-4 text-red-600" />
       <h2 className="font-bold text-xl mb-3">ERRO CRÍTICO DE CONEXÃO DO FIREBASE</h2>
       <p className="text-sm leading-relaxed max-w-md">
-        O aplicativo falhou ao inicializar a conexão com o banco de dados. Isso ocorre porque o ambiente de execução não forneceu as chaves de configuração necessárias.
+        O aplicativo falhou ao inicializar a conexão com o banco de dados.
       </p>
       <div className="mt-4 p-3 bg-red-100 rounded-lg text-left text-xs font-mono w-full max-w-sm">
         <p className="font-semibold mb-1">Detalhes da Falha:</p>
@@ -536,6 +575,14 @@ export default function VendingMachineApp() {
 
       <main className="p-4 max-w-4xl mx-auto space-y-6">
         
+        {/* AVISO MOCK (Exibido se estiver usando a config chumbada) */}
+        {firebaseError && firebaseError.includes("MOCK") && (
+          <div className="bg-amber-100 border-l-4 border-amber-500 p-4 rounded-lg text-sm text-amber-900 shadow-sm">
+            <div className="font-bold flex items-center gap-2"><AlertTriangle size={18} /> MODO DE TESTE (MOCK)</div>
+            <p className="mt-1 text-xs whitespace-pre-wrap">{firebaseError}</p>
+          </div>
+        )}
+
         {/* DASHBOARD VIEW */}
         {view === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-500">
@@ -604,6 +651,7 @@ export default function VendingMachineApp() {
               <h3 className="font-bold text-gray-700 mb-4">Fluxo de Caixa (Últimos Lançamentos)</h3>
               <div className="h-48 w-full -ml-4">
                 <ResponsiveContainer width="100%" height="100%">
+                  {/* Gráfico de Linha com as 10 últimas transações */}
                   <LineChart data={[...transactions].reverse().slice(-10)}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee" />
                     <XAxis dataKey="date" tickFormatter={(date) => new Date(date).getDate() + '/' + (new Date(date).getMonth() + 1)} tick={{fontSize: 10}} />
