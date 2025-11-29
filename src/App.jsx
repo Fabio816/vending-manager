@@ -187,19 +187,40 @@ export default function VendingMachineApp() {
   // AI States
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState(null);
+  // Estado para armazenar e exibir o erro crítico de configuração
   const [firebaseError, setFirebaseError] = useState(null);
 
-  // --- Autenticação e Inicialização do Firebase (AGORA USANDO VARIAVEIS GLOBAIS) ---
+  // --- Autenticação e Inicialização do Firebase (USANDO VARIÁVEIS GLOBAIS) ---
   
   useEffect(() => {
     const initializeFirebase = async () => {
+      let firebaseConfig = {};
+      const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+      
+      // LOGS ADICIONADOS AQUI PARA DIAGNÓSTICO
+      console.log("--- INÍCIO DO DIAGNÓSTICO FIREBASE ---");
+      console.log(`1. Variável __app_id (App ID): ${appId}`);
+      console.log(`2. Variável __firebase_config (Config String): "${firebaseConfigString}"`);
+      
       try {
-        // Tentar buscar a configuração do ambiente, com fallback seguro.
-        const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
-        const firebaseConfig = JSON.parse(firebaseConfigString);
-        
+        firebaseConfig = JSON.parse(firebaseConfigString);
+        console.log("3. Configuração do Firebase PARSEADA com sucesso:", firebaseConfig);
+      } catch (e) {
+        // A string JSON estava malformada
+        setFirebaseError(`Erro ao analisar JSON da configuração global do Firebase. String: "${firebaseConfigString}". Erro: ${e.message}`);
+        setLoading(false);
+        console.error("ERRO: Falha ao analisar JSON de configuração.", e);
+        return;
+      }
+      
+      const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+      console.log(`4. Variável __initial_auth_token (Token): ${initialAuthToken ? 'PRESENTE' : 'AUSENTE/null'}`);
+
+      try {
         if (!firebaseConfig.projectId) {
-            throw new Error("Configuração do Firebase inválida ou ausente.");
+            // ERRO CRÍTICO: Configuração inválida, geralmente por causa da variável global vazia
+            const configType = firebaseConfigString === '{}' ? 'Variável global vazia ou ausente' : 'Objeto de configuração inválido';
+            throw new Error(`A configuração do Firebase (obtida de '__firebase_config') está inválida ou incompleta. Detalhes: \n\n- Tipo de Falha: ${configType}\n- Propriedade 'projectId' não encontrada.`);
         }
 
         // Inicializar o App Firebase (evitando inicialização duplicada)
@@ -212,18 +233,21 @@ export default function VendingMachineApp() {
         setDb(firestoreInstance);
         
         // Autenticação (Custom Token ou Anônima)
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
         if (initialAuthToken) {
+          console.log("5. Autenticando com Token Personalizado...");
           await signInWithCustomToken(authInstance, initialAuthToken);
         } else {
+          console.log("5. Autenticando anonimamente (Token Ausente)...");
           await signInAnonymously(authInstance);
         }
         
         // Listener para o estado de autenticação
         const unsubscribe = onAuthStateChanged(authInstance, (currentUser) => {
+          console.log("6. Estado de Autenticação Mudou. User:", currentUser ? currentUser.uid : 'Desconectado');
           setUser(currentUser);
         });
+        
+        console.log("--- FIM DO DIAGNÓSTICO FIREBASE (Tudo ok até agora) ---");
 
         return () => unsubscribe();
 
@@ -385,7 +409,10 @@ export default function VendingMachineApp() {
 
   const handleAddMachine = async (e) => {
     e.preventDefault();
-    if (!user || !db) return;
+    if (!user || !db) {
+      setAiResult("ERRO: Não é possível salvar. Firebase/Autenticação não inicializada corretamente.");
+      return;
+    }
     const form = e.target;
     const newMachine = {
       name: form.name.value,
@@ -409,7 +436,10 @@ export default function VendingMachineApp() {
 
   const handleAddCollection = async (e) => {
     e.preventDefault();
-    if (!user || !db) return;
+    if (!user || !db) {
+      setAiResult("ERRO: Não é possível salvar. Firebase/Autenticação não inicializada corretamente.");
+      return;
+    }
     const form = e.target;
     const collectedAmount = parseFloat(form.amount.value);
     const restockedAmount = parseInt(form.restock.value) || 0;
@@ -451,7 +481,10 @@ export default function VendingMachineApp() {
   };
 
   const handleDeleteMachine = async () => {
-    if (!user || !db || !selectedMachine) return;
+    if (!user || !db || !selectedMachine) {
+       setAiResult("ERRO: Não é possível deletar. Firebase/Autenticação não inicializada corretamente.");
+       return;
+    }
     
     // NOTA: Em um app real, use um modal de confirmação antes de excluir
     
@@ -467,12 +500,22 @@ export default function VendingMachineApp() {
   }
 
   // --- Views ---
-
-  if (firebaseError) return <div className="flex h-screen items-center justify-center bg-red-100 p-8 text-red-800 text-center font-mono whitespace-pre-wrap rounded-xl m-4 shadow-lg">
-    <AlertTriangle size={24} className="mb-4" />
-    <h2 className="font-bold text-xl mb-2">ERRO CRÍTICO DE CONEXÃO</h2>
-    <p>{firebaseError}</p>
-  </div>;
+  
+  // BLOQUEIO CRÍTICO: Exibir erro se o Firebase não pôde ser configurado.
+  if (firebaseError) return (
+    <div className="flex flex-col h-screen items-center justify-center bg-red-50 p-8 text-red-800 text-center font-sans whitespace-pre-wrap rounded-xl m-4 shadow-lg border border-red-300">
+      <AlertTriangle size={32} className="mb-4 text-red-600" />
+      <h2 className="font-bold text-xl mb-3">ERRO CRÍTICO DE CONEXÃO DO FIREBASE</h2>
+      <p className="text-sm leading-relaxed max-w-md">
+        O aplicativo falhou ao inicializar a conexão com o banco de dados. Isso ocorre porque o ambiente de execução não forneceu as chaves de configuração necessárias.
+      </p>
+      <div className="mt-4 p-3 bg-red-100 rounded-lg text-left text-xs font-mono w-full max-w-sm">
+        <p className="font-semibold mb-1">Detalhes da Falha:</p>
+        <pre className="whitespace-pre-wrap break-words">{firebaseError}</pre>
+      </div>
+      <p className="text-sm mt-4 text-red-600">Por favor, corrija o erro de configuração no ambiente para usar o aplicativo.</p>
+    </div>
+  );
 
   if (loading) return <div className="flex h-screen items-center justify-center text-blue-600 animate-pulse">Carregando seus negócios...</div>;
 
@@ -775,7 +818,7 @@ export default function VendingMachineApp() {
         <div className="pt-8 text-center text-xs text-gray-400 space-y-1">
           <div className={`flex items-center justify-center gap-1 ${user ? 'text-emerald-500' : 'text-amber-500'}`}>
             <Wifi size={12} />
-            Status: {user ? 'Conectado (Firebase Auth OK)' : 'Conectando...'}
+            Status: {user ? 'Conectado (Firebase Auth OK)' : 'Aguardando autenticação...'}
           </div>
           <p className="truncate px-4">UID: {user ? user.uid : 'Aguardando autenticação...'}</p>
         </div>
