@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
+import { 
+  initializeApp, 
+  getApps, 
+  getApp 
+} from 'firebase/app';
 import { 
   getAuth, 
   signInAnonymously, 
@@ -48,59 +52,12 @@ import {
   Lightbulb
 } from 'lucide-react';
 
-// --- Configuração do Firebase e Globais (Corrigido para evitar ReferenceError) ---
+// --- Variáveis Hardcoded do Firebase (a pedido do usuário) ---
 
-// Função de segurança para obter variáveis de ambiente/globais
-const getEnvVar = (globalVar, envKey, defaultValue) => {
-  if (typeof globalVar !== 'undefined') {
-    return globalVar;
-  }
-  // Só acessa 'process.env' se 'process' estiver definido
-  if (typeof process !== 'undefined' && process.env && process.env[envKey]) {
-    return process.env[envKey];
-  }
-  return defaultValue;
-};
+// Usando o Project ID como o identificador da aplicação para as coleções do Firestore
+const appId = "vending-manager-app-cc60b";
 
-// 1. Configuração do Firebase
-const firebaseConfigString = getEnvVar(
-  typeof __firebase_config !== 'undefined' ? __firebase_config : undefined,
-  'REACT_APP_FIREBASE_CONFIG',
-  '{}'
-);
-const firebaseConfig = JSON.parse(firebaseConfigString);
-
-let app;
-let auth;
-let db;
-
-try {
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-} catch (e) {
-  // Se a inicialização falhar (provavelmente devido a uma chave de API inválida)
-  console.error("Erro CRÍTICO ao inicializar Firebase. Verifique sua chave de API.", e);
-  // Crio objetos mock para evitar que o resto do código quebre
-  app = null;
-  auth = { currentUser: null }; 
-  db = null;
-}
-
-
-// 2. ID do Aplicativo
-const appId = getEnvVar(
-  typeof __app_id !== 'undefined' ? __app_id : undefined,
-  'REACT_APP_APP_ID',
-  'default-app-id'
-);
-
-// 3. Chave da API Gemini (vazia aqui, será fornecida pelo backend no Canvas ou por REACT_APP_GEMINI_API_KEY no deploy)
-const apiKey = getEnvVar(
-  undefined,
-  'REACT_APP_GEMINI_API_KEY',
-  "" 
-);
+const apiKey = ""; // Mantemos vazia, a plataforma injeta para o Gemini API
 
 /**
  * Chama a API Gemini com Exponential Backoff para robustez.
@@ -224,38 +181,70 @@ export default function VendingMachineApp() {
   const [transactions, setTransactions] = useState([]);
   const [selectedMachine, setSelectedMachine] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [db, setDb] = useState(null); // Adicionado estado para DB
+  const [auth, setAuth] = useState(null); // Adicionado estado para Auth
   
   // AI States
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState(null);
+  const [firebaseError, setFirebaseError] = useState(null); // Novo estado para erros de Firebase
 
-  // --- Autenticação e Carregamento de Dados ---
+  // --- Autenticação e Inicialização do Firebase (AGORA HARDCODED) ---
   
   useEffect(() => {
-    if (!auth) return; // Se a inicialização do Firebase falhou, pare aqui.
+    const initializeFirebase = async () => {
+      try {
+        // Configuração Hardcoded (A pedido do usuário, removendo dependência de __firebase_config)
+        const firebaseConfig = {
+            apiKey: "AIzaSyA8ly0McGkwbo-JiJsF0ZzAXMA30Mysvvo",
+            authDomain: "vending-manager-app-cc60b.firebaseapp.com",
+            projectId: "vending-manager-app-cc60b",
+            storageBucket: "vending-manager-app-cc60b.firebasestorage.app",
+            messagingSenderId: "686687292222",
+            appId: "1:686687292222:web:847db02734c30b9f8f7a6f"
+        };
+        
+        // Inicializar o App Firebase (evitando inicialização duplicada)
+        const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+        const authInstance = getAuth(app);
+        const firestoreInstance = getFirestore(app);
 
-    const initAuth = async () => {
-      // Prioriza o token de autenticação do ambiente (Canvas) se existir,
-      // caso contrário, usa a autenticação anônima padrão para deploy real.
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
+        // Definir as instâncias no estado
+        setAuth(authInstance);
+        setDb(firestoreInstance);
+        
+        // Autenticação (Custom Token ou Anônima)
+        // O token customizado '__initial_auth_token' ainda é preferido se disponível
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        if (initialAuthToken) {
+          await signInWithCustomToken(authInstance, initialAuthToken);
+        } else {
+          await signInAnonymously(authInstance);
+        }
+        
+        // Listener para o estado de autenticação
+        const unsubscribe = onAuthStateChanged(authInstance, (currentUser) => {
+          setUser(currentUser);
+        });
+
+        return () => unsubscribe();
+
+      } catch (e) {
+        console.error("Erro CRÍTICO ao inicializar o Firebase:", e);
+        setFirebaseError(`Erro de inicialização do Firebase: ${e.message}`);
+        setLoading(false); // Parar o loading mesmo com erro
       }
     };
-    initAuth();
     
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      // Se não há usuário logado (i.e., falha ou ainda autenticando),
-      // garantir que o loading termine para não travar a tela.
-      if (!currentUser && !loading) setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+    initializeFirebase();
+  }, []); // Executa apenas na montagem
+
+  // --- Carregamento de Dados (Depende de 'user' e 'db') ---
 
   useEffect(() => {
-    if (!user || !db) return; // Só carrega se houver DB e usuário autenticado
+    // Só carrega se houver DB e usuário autenticado
+    if (!user || !db) return; 
 
     // Carregar Máquinas
     const machinesRef = collection(db, 'artifacts', appId, 'users', user.uid, 'machines');
@@ -264,26 +253,26 @@ export default function VendingMachineApp() {
       setMachines(data);
     }, (error) => console.error("Erro ao carregar máquinas:", error));
 
-    // Carregar Transações (Filtraremos no cliente por simplicidade de indexação)
+    // Carregar Transações
     const transactionsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'transactions');
     const unsubTrans = onSnapshot(transactionsRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data(),
-        // Garantir que createdAt seja um objeto Date, seja de Timestamp ou Date
+        // Garantir que createdAt seja um objeto Date
         date: doc.data().createdAt instanceof Timestamp ? doc.data().createdAt.toDate() : (doc.data().createdAt || new Date())
       }));
       // Ordenar por data decrescente (em memória)
       data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setTransactions(data);
-      setLoading(false);
+      setLoading(false); // Loading só para após carregar os dados
     }, (error) => console.error("Erro ao carregar transações:", error));
 
     return () => {
       unsubMachines();
       unsubTrans();
     };
-  }, [user]);
+  }, [user, db]); // Depende do user e do DB estarem prontos
 
   // Limpar estado da IA ao trocar de tela
   useEffect(() => {
@@ -310,12 +299,11 @@ export default function VendingMachineApp() {
     machines.forEach(m => {
       if ((m.currentStock / m.capacity) < 0.25) criticalStock++; // Alerta se estoque < 25%
       
-      // Lógica simplificada de prejuízo baseada em receita média mensal estimada (mock)
       const machineRevenue = transactions
         .filter(t => t.machineId === m.id)
         .reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
       
-      // Se a máquina faturou menos de 50 reais no total e tem transações, alerta de baixo rendimento
+      // Lógica de baixo rendimento
       if (machineRevenue < 50 && machineRevenue > 0) unprofitable++; 
     });
 
@@ -328,11 +316,11 @@ export default function VendingMachineApp() {
     };
   }, [machines, transactions]);
 
-  // --- Funções IA ---
+  // --- Funções IA (Dependem da apiKey) ---
 
   const handleGlobalAnalysis = async () => {
-    if (!apiKey && typeof process === 'undefined') {
-      setAiResult("ERRO: A chave da API Gemini não foi configurada. Em deploy real, configure a variável REACT_APP_GEMINI_API_KEY.");
+    if (!apiKey) {
+      setAiResult("ERRO: A chave da API Gemini não foi configurada. Não é possível gerar análise.");
       return;
     }
     setAiLoading(true);
@@ -360,8 +348,8 @@ export default function VendingMachineApp() {
 
   const handleMachineAnalysis = async () => {
     if (!selectedMachine) return;
-    if (!apiKey && typeof process === 'undefined') {
-      setAiResult("ERRO: A chave da API Gemini não foi configurada. Em deploy real, configure a variável REACT_APP_GEMINI_API_KEY.");
+    if (!apiKey) {
+      setAiResult("ERRO: A chave da API Gemini não foi configurada. Não é possível gerar análise.");
       return;
     }
     setAiLoading(true);
@@ -395,7 +383,7 @@ export default function VendingMachineApp() {
     setAiLoading(false);
   };
 
-  // --- Ações ---
+  // --- Ações (Dependem de 'user' e 'db') ---
 
   const handleAddMachine = async (e) => {
     e.preventDefault();
@@ -416,7 +404,6 @@ export default function VendingMachineApp() {
       await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'machines'), newMachine);
       setView('machines');
     } catch (error) {
-      // Usando console.error em vez de alert() conforme a regra
       console.error("Erro ao salvar máquina:", error);
       setAiResult("Erro ao salvar máquina. Verifique a conexão com o banco de dados.");
     }
@@ -431,7 +418,6 @@ export default function VendingMachineApp() {
     
     if (!selectedMachine) return;
 
-    // Calcular custo da reposição
     const cost = restockedAmount * selectedMachine.costPerItem;
 
     try {
@@ -447,7 +433,6 @@ export default function VendingMachineApp() {
       });
 
       // 2. Atualizar estoque da máquina
-      // Estimativa de itens vendidos baseada no valor coletado e preço da jogada
       const itemsSoldEstimate = Math.floor(collectedAmount / selectedMachine.pricePerPlay);
       
       let newStock = selectedMachine.currentStock - itemsSoldEstimate + restockedAmount;
@@ -470,10 +455,8 @@ export default function VendingMachineApp() {
   const handleDeleteMachine = async () => {
     if (!user || !db || !selectedMachine) return;
     
-    // Substituindo window.confirm por um modal simples no console (no ambiente real, seria um modal UI)
     console.log("Confirmar exclusão de máquina. (Em um app real, use um modal UI)");
     
-    // Como não podemos usar window.confirm(), assumimos que o clique acionou a intenção final.
     const machineRef = doc(db, 'artifacts', appId, 'users', user.uid, 'machines', selectedMachine.id);
     try {
       await deleteDoc(machineRef);
@@ -486,6 +469,8 @@ export default function VendingMachineApp() {
   }
 
   // --- Views ---
+
+  if (firebaseError) return <div className="flex h-screen items-center justify-center bg-red-100 p-8 text-red-800 text-center font-mono whitespace-pre-wrap rounded-xl m-4 shadow-lg">{firebaseError}</div>;
 
   if (loading) return <div className="flex h-screen items-center justify-center text-blue-600 animate-pulse">Carregando seus negócios...</div>;
 
@@ -715,7 +700,7 @@ export default function VendingMachineApp() {
                   type="number" 
                   placeholder="0" 
                 />
-                <Button variant="success" className="w-full py-3 text-lg">
+                <Button variant="success" className="w-full mt-4 py-3">
                   Confirmar Coleta
                 </Button>
               </form>
