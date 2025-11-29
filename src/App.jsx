@@ -69,9 +69,24 @@ const firebaseConfigString = getEnvVar(
   '{}'
 );
 const firebaseConfig = JSON.parse(firebaseConfigString);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+
+let app;
+let auth;
+let db;
+
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+} catch (e) {
+  // Se a inicialização falhar (provavelmente devido a uma chave de API inválida)
+  console.error("Erro CRÍTICO ao inicializar Firebase. Verifique sua chave de API.", e);
+  // Crio objetos mock para evitar que o resto do código quebre
+  app = null;
+  auth = { currentUser: null }; 
+  db = null;
+}
+
 
 // 2. ID do Aplicativo
 const appId = getEnvVar(
@@ -217,6 +232,8 @@ export default function VendingMachineApp() {
   // --- Autenticação e Carregamento de Dados ---
   
   useEffect(() => {
+    if (!auth) return; // Se a inicialização do Firebase falhou, pare aqui.
+
     const initAuth = async () => {
       // Prioriza o token de autenticação do ambiente (Canvas) se existir,
       // caso contrário, usa a autenticação anônima padrão para deploy real.
@@ -238,7 +255,7 @@ export default function VendingMachineApp() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !db) return; // Só carrega se houver DB e usuário autenticado
 
     // Carregar Máquinas
     const machinesRef = collection(db, 'artifacts', appId, 'users', user.uid, 'machines');
@@ -256,7 +273,7 @@ export default function VendingMachineApp() {
         // Garantir que createdAt seja um objeto Date, seja de Timestamp ou Date
         date: doc.data().createdAt instanceof Timestamp ? doc.data().createdAt.toDate() : (doc.data().createdAt || new Date())
       }));
-      // Ordenar por data decrescente
+      // Ordenar por data decrescente (em memória)
       data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setTransactions(data);
       setLoading(false);
@@ -382,6 +399,7 @@ export default function VendingMachineApp() {
 
   const handleAddMachine = async (e) => {
     e.preventDefault();
+    if (!user || !db) return;
     const form = e.target;
     const newMachine = {
       name: form.name.value,
@@ -406,6 +424,7 @@ export default function VendingMachineApp() {
 
   const handleAddCollection = async (e) => {
     e.preventDefault();
+    if (!user || !db) return;
     const form = e.target;
     const collectedAmount = parseFloat(form.amount.value);
     const restockedAmount = parseInt(form.restock.value) || 0;
@@ -449,6 +468,8 @@ export default function VendingMachineApp() {
   };
 
   const handleDeleteMachine = async () => {
+    if (!user || !db || !selectedMachine) return;
+    
     // Substituindo window.confirm por um modal simples no console (no ambiente real, seria um modal UI)
     console.log("Confirmar exclusão de máquina. (Em um app real, use um modal UI)");
     
@@ -637,8 +658,8 @@ export default function VendingMachineApp() {
             <Card className="border-t-4 border-t-blue-500">
               <div className="flex justify-between">
                 <div>
-                   <h2 className="text-xl font-bold">{selectedMachine.name}</h2>
-                   <p className="text-sm text-gray-500 flex items-center gap-1"><MapPin size={14}/> {selectedMachine.location}</p>
+                    <h2 className="text-xl font-bold">{selectedMachine.name}</h2>
+                    <p className="text-sm text-gray-500 flex items-center gap-1"><MapPin size={14}/> {selectedMachine.location}</p>
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-gray-500">Estoque Atual</div>
@@ -649,14 +670,14 @@ export default function VendingMachineApp() {
               </div>
               
               <div className="mt-6 grid grid-cols-2 gap-2">
-                 <div className="bg-gray-50 p-3 rounded-lg text-center">
-                    <span className="block text-xs text-gray-500">Preço Venda</span>
-                    <strong className="text-gray-800">{formatCurrency(selectedMachine.pricePerPlay)}</strong>
-                 </div>
-                 <div className="bg-gray-50 p-3 rounded-lg text-center">
-                    <span className="block text-xs text-gray-500">Custo Produto</span>
-                    <strong className="text-gray-800">{formatCurrency(selectedMachine.costPerItem)}</strong>
-                 </div>
+                   <div className="bg-gray-50 p-3 rounded-lg text-center">
+                     <span className="block text-xs text-gray-500">Preço Venda</span>
+                     <strong className="text-gray-800">{formatCurrency(selectedMachine.pricePerPlay)}</strong>
+                   </div>
+                   <div className="bg-gray-50 p-3 rounded-lg text-center">
+                     <span className="block text-xs text-gray-500">Custo Produto</span>
+                     <strong className="text-gray-800">{formatCurrency(selectedMachine.costPerItem)}</strong>
+                   </div>
               </div>
 
               {/* Botão AI Machine Analysis */}
@@ -730,7 +751,7 @@ export default function VendingMachineApp() {
             <div className="pt-4 border-t border-gray-200">
               {/* Em um app real, aqui você implementaria um modal de confirmação */}
               <Button variant="danger" onClick={handleDeleteMachine} className="w-full text-sm">
-                 <Trash2 size={16} /> Remover Máquina
+                  <Trash2 size={16} /> Remover Máquina
               </Button>
             </div>
           </div>
@@ -787,18 +808,13 @@ export default function VendingMachineApp() {
 
           <button 
             onClick={() => setView('machines')}
-            className={`p-4 flex flex-col items-center gap-1 ${view === 'machines' || view === 'details' ? 'text-blue-600' : 'text-gray-400'}`}
+            className={`p-4 flex flex-col items-center gap-1 ${view === 'machines' || view === 'details' || view === 'add-machine' ? 'text-blue-600' : 'text-gray-400'}`}
           >
             <Package size={20} />
             <span className="text-[10px] font-medium">Máquinas</span>
           </button>
         </div>
       </nav>
-      
-      {/* Estilo Global para Mobile SafeArea */}
-      <style>{`
-        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
-      `}</style>
     </div>
   );
 }
