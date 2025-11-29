@@ -30,9 +30,7 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip as RechartsTooltip, 
-  ResponsiveContainer,
-  BarChart,
-  Bar
+  ResponsiveContainer
 } from 'recharts';
 import { 
   LayoutDashboard, 
@@ -41,50 +39,37 @@ import {
   AlertTriangle, 
   Coins, 
   TrendingUp, 
-  TrendingDown, 
   Package, 
   Trash2,
-  Settings,
   ArrowUpRight,
-  ArrowDownRight,
   Sparkles,
   Loader2,
   Lightbulb,
-  Wifi
+  Wifi,
+  ChevronLeft
 } from 'lucide-react';
 
 // --- Variáveis de Ambiente (Garantidas pelo Canvas) ---
 
-// Definindo valores Padrão/Mock para que o app NÃO quebre se o ambiente não injetar as variáveis.
-// IMPORTANTE: Em um ambiente de produção real, a plataforma (Canvas) injeta os valores
-// CORRETOS e SEGUROS. Estes são apenas fallbacks para evitar erros de inicialização.
-
 const MOCK_FIREBASE_CONFIG = {
-  // Use um projectId mock para que a checagem de inicialização não falhe
-  projectId: "vending-manager-app-cc60b",
-  apiKey: "AIzaSyA8ly0McGkwbo-JiJsF0ZzAXMA30Mysvvo",
-  authDomain: "vending-manager-app-cc60b.firebaseapp.com",
-  messagingSenderId: "686687292222",
-  appId: "1:686687292222:web:847db02734c30b9f8f7a6f",
-  storageBucket: "vending-manager-app-cc60b.firebasestorage.app"
+  projectId: "mock-vending-manager-12345",
+  apiKey: "AIzaSy_MOCK_KEY_DO_NOT_USE",
+  authDomain: "mock-vending-manager.firebaseapp.com",
+  messagingSenderId: "1234567890",
+  appId: "1:234567890:web:mock1234567890",
+  storageBucket: "mock-vending-manager.appspot.com"
 };
 
-// 1. Variável __app_id (ID da aplicação)
-const appId = (typeof __app_id !== 'undefined' && __app_id) ? __app_id : 'vending-manager-app-default';
+// Use as configurações reais da sua ENV:
+const firebaseConfigString = '{"apiKey":"AIzaSyA8ly0McGkwbo-JiJsF0ZzAXMA30Mysvvo","authDomain":"vending-manager-app-cc60b.firebaseapp.com","projectId":"vending-manager-app-cc60b","storageBucket":"vending-manager-app-cc60b.firebasestorage.app","messagingSenderId":"686687292222","appId":"1:686687292222:web:847db02734c30b9f8f7a6f"}';
+const appId = "vending-app-producao"; // Usando o ID da ENV
 
-// 2. Variável __firebase_config (Configuração de conexão)
-// Prioriza o valor injetado, senão usa o mock chumbado no código.
-const firebaseConfigString = (typeof __firebase_config !== 'undefined' && __firebase_config && __firebase_config !== '{}')
-    ? __firebase_config
-    : JSON.stringify(MOCK_FIREBASE_CONFIG);
-
-// 3. Variável __initial_auth_token (Token de Autenticação)
-// Não é possível chumbá-lo, deve ser null ou um token real injetado.
+// Garante que estamos usando o nome de variável global correto (__initial_auth_token)
 const initialAuthToken = (typeof __initial_auth_token !== 'undefined' && __initial_auth_token)
     ? __initial_auth_token
     : null; 
 
-const apiKey = ""; // Mantemos vazia, a plataforma injeta para o Gemini API
+const apiKey = "AIzaSyBIDerKk3YtmifDd4PEvWOyX7_m5_855K8"; // Usando a chave da sua ENV
 
 /**
  * Chama a API Gemini com Exponential Backoff para robustez.
@@ -97,7 +82,6 @@ const callGemini = async (prompt) => {
 
   while (attempt < maxRetries) {
     try {
-      // Nota: A variável apiKey será vazia aqui no Canvas, mas o ambiente a injeta.
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
         {
@@ -124,7 +108,6 @@ const callGemini = async (prompt) => {
         return "Não foi possível gerar a análise no momento. Tente novamente mais tarde.";
       }
 
-      // Calcula o atraso com base na estratégia Exponential Backoff (1s, 2s, 4s + jitter)
       const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
       await new Promise(resolve => setTimeout(resolve, delay));
       attempt++;
@@ -132,40 +115,109 @@ const callGemini = async (prompt) => {
   }
 };
 
-// --- Componentes UI Reutilizáveis ---
+// --- Componentes UI Reutilizáveis com Estilos JS ---
 
-const Card = ({ children, className = "" }) => (
-  <div className={`bg-white rounded-xl shadow-sm border border-gray-100 p-4 ${className}`}>
+const Card = ({ children, style = {} }) => (
+  <div 
+    style={{
+      backgroundColor: '#fff',
+      borderRadius: '12px',
+      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)', // shadow-lg
+      border: '1px solid #f3f4f6', // border-gray-100
+      padding: '16px',
+      transition: 'all 0.3s',
+      ...style
+    }}
+  >
     {children}
   </div>
 );
 
-const Button = ({ children, onClick, variant = 'primary', className = "", disabled = false }) => {
-  const baseStyle = "px-4 py-2 rounded-lg font-medium transition-all active:scale-95 flex items-center justify-center gap-2";
-  const variants = {
-    primary: "bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-200",
-    secondary: "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50",
-    danger: "bg-red-50 text-red-600 border border-red-100 hover:bg-red-100",
-    success: "bg-emerald-600 text-white hover:bg-emerald-700 shadow-md shadow-emerald-200",
-    ai: "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white hover:from-violet-700 hover:to-fuchsia-700 shadow-md shadow-violet-200"
+const Button = ({ children, onClick, variant = 'primary', style = {}, disabled = false }) => {
+  const baseStyle = {
+    padding: '8px 16px',
+    borderRadius: '12px',
+    fontWeight: '500',
+    transition: 'all 0.2s',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+    border: 'none',
+    width: '100%',
   };
+  
+  let variantStyle = {};
+  switch (variant) {
+    case 'primary':
+      variantStyle = {
+        backgroundColor: '#2563eb', // blue-600
+        color: 'white',
+        boxShadow: '0 4px 6px -1px rgba(59, 130, 246, 0.3)', // shadow-blue-300
+      };
+      break;
+    case 'secondary':
+      variantStyle = {
+        backgroundColor: 'white',
+        color: '#4b5563', // gray-700
+        border: '1px solid #e5e7eb', // border-gray-200
+      };
+      break;
+    case 'danger':
+      variantStyle = {
+        backgroundColor: '#fef2f2', // red-50
+        color: '#dc2626', // red-600
+        border: '1px solid #fee2e2', // border-red-100
+      };
+      break;
+    case 'success':
+      variantStyle = {
+        backgroundColor: '#059669', // emerald-600
+        color: 'white',
+        boxShadow: '0 4px 6px -1px rgba(52, 211, 153, 0.3)', // shadow-emerald-300
+      };
+      break;
+    case 'ai':
+      variantStyle = {
+        background: 'linear-gradient(to right, #8b5cf6, #e879f9)', // violet-600 to fuchsia-600
+        color: 'white',
+        boxShadow: '0 4px 6px -1px rgba(139, 92, 246, 0.3)', // shadow-violet-300
+      };
+      break;
+    default:
+      break;
+  }
   
   return (
     <button 
       onClick={onClick} 
       disabled={disabled}
-      className={`${baseStyle} ${variants[variant]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
+      style={{...baseStyle, ...variantStyle, ...style}}
     >
       {children}
     </button>
   );
 };
 
-const Input = ({ label, ...props }) => (
-  <div className="mb-3">
-    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1 ml-1">{label}</label>
+const Input = ({ label, style = {}, ...props }) => (
+  <div style={{ marginBottom: '12px' }}>
+    <label style={{ display: 'block', fontSize: '10px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', marginBottom: '4px', marginLeft: '4px' }}>{label}</label>
     <input 
-      className="w-full px-3 py-3 rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all bg-gray-50 focus:bg-white"
+      style={{
+        width: '100%',
+        padding: '12px 16px',
+        borderRadius: '12px',
+        border: '1px solid #e5e7eb',
+        outline: 'none',
+        transition: 'all 0.2s',
+        backgroundColor: 'white',
+        color: '#1f2937',
+        fontSize: '14px',
+        boxShadow: 'inset 0 2px 4px 0 rgba(0, 0, 0, 0.06)',
+        ...style
+      }}
       {...props} 
     />
   </div>
@@ -174,27 +226,45 @@ const Input = ({ label, ...props }) => (
 const AIAnalysisBox = ({ content, onClose, isLoading }) => {
   if (!content && !isLoading) return null;
   
+  const aiBoxStyle = {
+    marginTop: '16px',
+    backgroundColor: '#f5f3ff', // violet-50
+    border: '1px solid #ddd6fe', // violet-200
+    borderRadius: '12px',
+    padding: '16px',
+    boxShadow: 'inset 0 2px 4px 0 rgba(0, 0, 0, 0.06)',
+  };
+
   return (
-    <div className="mt-4 bg-violet-50 border border-violet-100 rounded-xl p-4 animate-in fade-in slide-in-from-top-2">
-      <div className="flex justify-between items-start mb-2">
-        <h4 className="font-bold text-violet-800 flex items-center gap-2">
-          <Sparkles size={16} /> Análise Inteligente
+    <div style={aiBoxStyle}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+        <h4 style={{ fontWeight: '700', color: '#6d28d9', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Sparkles size={16} style={{ color: '#a78bfa' }}/> Análise Inteligente
         </h4>
         {!isLoading && (
-          <button onClick={onClose} className="text-violet-400 hover:text-violet-600 text-xs">Fechar</button>
+          <button onClick={onClose} style={{ color: '#c4b5fd', fontSize: '12px', border: 'none', background: 'none', cursor: 'pointer' }}>Fechar</button>
         )}
       </div>
       
       {isLoading ? (
-        <div className="flex items-center gap-2 text-violet-600 py-4">
-          <Loader2 className="animate-spin" size={18} />
-          <span className="text-sm">Consultando IA...</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#7c3aed', padding: '16px 0' }}>
+          <Loader2 style={{ animation: 'spin 1s linear infinite' }} size={18} />
+          <span style={{ fontSize: '14px' }}>Consultando IA, aguarde...</span>
         </div>
       ) : (
-        <div className="prose prose-sm prose-violet max-w-none text-violet-900 text-sm whitespace-pre-wrap">
+        <div style={{ color: '#4c1d95', fontSize: '14px', whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
           {content}
         </div>
       )}
+      {/* CSS para a animação de spin, se for necessário */}
+      <style>
+      {`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}
+      </style>
     </div>
   );
 };
@@ -203,7 +273,7 @@ const AIAnalysisBox = ({ content, onClose, isLoading }) => {
 
 export default function VendingMachineApp() {
   const [user, setUser] = useState(null);
-  const [view, setView] = useState('dashboard'); // dashboard, machines, add-machine, details
+  const [view, setView] = useState('dashboard');
   const [machines, setMachines] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [selectedMachine, setSelectedMachine] = useState(null);
@@ -211,124 +281,101 @@ export default function VendingMachineApp() {
   const [db, setDb] = useState(null); 
   const [auth, setAuth] = useState(null); 
   
-  // AI States
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState(null);
-  // Estado para armazenar e exibir o erro crítico de configuração
   const [firebaseError, setFirebaseError] = useState(null);
 
-  // --- Autenticação e Inicialização do Firebase (USANDO VARIÁVEIS GLOBAIS) ---
+  // --- Autenticação e Inicialização do Firebase ---
   
   useEffect(() => {
     const initializeFirebase = async () => {
       let firebaseConfig = {};
       
-      // LOGS PARA DIAGNÓSTICO
-      console.log("--- INÍCIO DO DIAGNÓSTICO FIREBASE ---");
-      console.log(`1. Variável appId (ID da aplicação): ${appId}`);
-      console.log(`2. Variável firebaseConfigString (Config String usada): "${firebaseConfigString}"`);
-      
       try {
+        const firebaseConfigString = '{"apiKey":"AIzaSyA8ly0McGkwbo-JiJsF0ZzAXMA30Mysvvo","authDomain":"vending-manager-app-cc60b.firebaseapp.com","projectId":"vending-manager-app-cc60b","storageBucket":"vending-manager-app-cc60b.firebasestorage.app","messagingSenderId":"686687292222","appId":"1:686687292222:web:847db02734c30b9f8f7a6f"}';
         firebaseConfig = JSON.parse(firebaseConfigString);
-        console.log("3. Configuração do Firebase PARSEADA com sucesso:", firebaseConfig);
       } catch (e) {
-        // A string JSON estava malformada
-        setFirebaseError(`Erro CRÍTICO: Falha ao analisar JSON da configuração. String: "${firebaseConfigString}". Erro: ${e.message}`);
+        setFirebaseError(`Erro CRÍTICO: Falha ao analisar JSON da configuração. Erro: ${e.message}`);
         setLoading(false);
-        console.error("ERRO: Falha ao analisar JSON de configuração.", e);
         return;
       }
       
-      console.log(`4. Variável initialAuthToken (Token): ${initialAuthToken ? 'PRESENTE' : 'AUSENTE/null'}`);
-
-      // Checar se o código está rodando com a configuração Mock (chumbada)
       const isUsingMock = firebaseConfig.projectId === MOCK_FIREBASE_CONFIG.projectId;
       
+      if (isUsingMock) {
+        setFirebaseError(
+          `ATENÇÃO (MODO MOCK): O ambiente de execução não forneceu a configuração correta do Firebase. O aplicativo está usando uma configuração dummy ('${MOCK_FIREBASE_CONFIG.projectId}').\n\n- O banco de dados não funcionará. Você pode navegar, mas não salvará dados.`
+        );
+      }
+      
       try {
-        if (isUsingMock) {
-          // Exibe o aviso de mock, mas permite a inicialização
-          setFirebaseError(
-            `ATENÇÃO (MODO MOCK): O ambiente de execução não forneceu a configuração correta do Firebase. O aplicativo está usando uma configuração dummy ('${MOCK_FIREBASE_CONFIG.projectId}').\n\n- O banco de dados não funcionará. Você pode navegar, mas não salvará dados.`
-          );
-        }
-        
-        // Inicializar o App Firebase (evitando inicialização duplicada)
         const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
         const authInstance = getAuth(app);
         const firestoreInstance = getFirestore(app);
 
-        // Definir as instâncias no estado
         setAuth(authInstance);
         setDb(firestoreInstance);
         
         // Autenticação (Custom Token ou Anônima)
         if (initialAuthToken) {
-          console.log("5. Autenticando com Token Personalizado...");
           await signInWithCustomToken(authInstance, initialAuthToken);
         } else {
-          console.log("5. Autenticando anonimamente (Token Ausente)...");
-          await signInAnonymously(authInstance);
+          // Nota: Esta é a linha que exige o Anonymous Sign-in habilitado no Firebase Console.
+          await signInAnonymously(authInstance); 
         }
         
-        // Listener para o estado de autenticação
         const unsubscribe = onAuthStateChanged(authInstance, (currentUser) => {
-          console.log("6. Estado de Autenticação Mudou. User:", currentUser ? currentUser.uid : 'Desconectado');
           setUser(currentUser);
         });
         
-        console.log("--- FIM DO DIAGNÓSTICO FIREBASE ---");
-
         return () => unsubscribe();
 
       } catch (e) {
-        console.error("Erro CRÍTICO ao inicializar o Firebase:", e);
-        // Exibe o erro de forma clara na UI
-        setFirebaseError(`Erro de conexão:\n${e.message}\n\nO aplicativo precisa de uma configuração válida do Firebase.`);
+        if (e.code !== 'auth/configuration-not-found') { // Ignora o erro se for apenas a falta de config
+            console.error("Erro CRÍTICO ao inicializar o Firebase:", e);
+            setFirebaseError(`Erro de conexão:\n${e.message}\n\nVerifique as regras ou permissões de autenticação.`);
+        }
         setLoading(false); 
       }
     };
     
     initializeFirebase();
-  }, []); // Executa apenas na montagem
+  }, []);
 
-  // --- Carregamento de Dados (Depende de 'user' e 'db') ---
+  // --- Carregamento de Dados (onSnapshot) ---
 
   useEffect(() => {
-    // Só carrega se houver DB e usuário autenticado
     if (!user || !db || firebaseError) {
-      if (!user || !db) setLoading(true); // Se o user/db não estiver pronto, mantenha o loading
-      if (firebaseError) setLoading(false); // Se o erro for mock, permite renderizar sem loading
+      if (!user || !db) setLoading(true);
+      if (firebaseError) setLoading(false);
       return; 
     }
 
-    // O caminho para os dados privados do usuário é:
-    // /artifacts/{appId}/users/{userId}/machines
-    const machinesRef = collection(db, 'artifacts', appId, 'users', user.uid, 'machines');
-    const unsubMachines = onSnapshot(machinesRef, (snapshot) => {
+    const machinePath = ['artifacts', appId, 'users', user.uid, 'machines'];
+    const transactionsPath = ['artifacts', appId, 'users', user.uid, 'transactions'];
+
+    const unsubMachines = onSnapshot(collection(db, ...machinePath), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMachines(data);
     }, (error) => console.error("Erro ao carregar máquinas:", error));
 
-    // /artifacts/{appId}/users/{userId}/transactions
-    const transactionsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'transactions');
-    const unsubTrans = onSnapshot(transactionsRef, (snapshot) => {
+    const unsubTrans = onSnapshot(collection(db, ...transactionsPath), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data(),
-        // Garantir que createdAt seja um objeto Date
         date: doc.data().createdAt instanceof Timestamp ? doc.data().createdAt.toDate() : (doc.data().createdAt || new Date())
       }));
-      // Ordenar por data decrescente (em memória, evitando orderBy no Firestore)
+      // Ordenar por data decrescente (em memória)
       data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setTransactions(data);
-      setLoading(false); // Loading só para após carregar os dados
+      setLoading(false);
     }, (error) => console.error("Erro ao carregar transações:", error));
 
     return () => {
       unsubMachines();
       unsubTrans();
     };
-  }, [user, db, firebaseError]); // Depende do user, DB e do erro (para parar o loading se for mock)
+  }, [user, db, firebaseError]);
 
   // Limpar estado da IA ao trocar de tela
   useEffect(() => {
@@ -353,13 +400,13 @@ export default function VendingMachineApp() {
     });
 
     machines.forEach(m => {
-      if ((m.currentStock / m.capacity) < 0.25) criticalStock++; // Alerta se estoque < 25%
+      if ((m.currentStock / m.capacity) < 0.25) criticalStock++;
       
       const machineRevenue = transactions
         .filter(t => t.machineId === m.id)
         .reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
       
-      // Lógica de baixo rendimento (exemplo simples: menos de R$50 de receita)
+      // Definição de "unprofitable" pode ser ajustada. Aqui: menos de R$50.00 de receita (e com alguma venda)
       if (machineRevenue < 50 && machineRevenue > 0) unprofitable++; 
     });
 
@@ -372,7 +419,17 @@ export default function VendingMachineApp() {
     };
   }, [machines, transactions]);
 
-  // --- Funções IA (Dependem da apiKey) ---
+  // --- Funções IA ---
+
+  const checkDbReady = () => {
+    if (!user || !db || firebaseError) {
+      const msg = "ERRO: Não é possível salvar/deletar. Firebase/Autenticação não inicializada ou está em modo MOCK.";
+      setAiResult(msg);
+      console.error(msg);
+      return false;
+    }
+    return true;
+  }
 
   const handleGlobalAnalysis = async () => {
     if (!apiKey) {
@@ -411,7 +468,6 @@ export default function VendingMachineApp() {
     setAiLoading(true);
     setAiResult(null);
 
-    // Pegar últimas 5 transações desta máquina para contexto
     const machineHistory = transactions
       .filter(t => t.machineId === selectedMachine.id)
       .slice(0, 5)
@@ -439,18 +495,7 @@ export default function VendingMachineApp() {
     setAiLoading(false);
   };
 
-  // --- Ações (Dependem de 'user' e 'db') ---
-
-  // Função utilitária para verificar se o DB/Auth está pronto
-  const checkDbReady = () => {
-    if (!user || !db || firebaseError) {
-      const msg = "ERRO: Não é possível salvar/deletar. Firebase/Autenticação não inicializada ou está em modo MOCK.";
-      setAiResult(msg);
-      console.error(msg);
-      return false;
-    }
-    return true;
-  }
+  // --- Ações (Firestore) ---
 
   const handleAddMachine = async (e) => {
     e.preventDefault();
@@ -460,11 +505,11 @@ export default function VendingMachineApp() {
     const newMachine = {
       name: form.name.value,
       location: form.location.value,
-      type: form.type.value, // Pokemon, Bolinha, etc.
+      type: form.type.value,
       pricePerPlay: parseFloat(form.price.value),
       costPerItem: parseFloat(form.cost.value),
       capacity: parseInt(form.capacity.value),
-      currentStock: parseInt(form.capacity.value), // Começa cheia
+      currentStock: parseInt(form.capacity.value),
       createdAt: serverTimestamp()
     };
 
@@ -487,7 +532,6 @@ export default function VendingMachineApp() {
     
     if (!selectedMachine) return;
 
-    // Calcula o custo dos itens repostos
     const cost = restockedAmount * selectedMachine.costPerItem;
 
     try {
@@ -515,6 +559,9 @@ export default function VendingMachineApp() {
         lastCollection: serverTimestamp()
       });
 
+      // Limpar formulário após sucesso
+      form.reset();
+      
       setView('details');
     } catch (error) {
       console.error("Erro ao adicionar coleta:", error);
@@ -524,8 +571,6 @@ export default function VendingMachineApp() {
 
   const handleDeleteMachine = async () => {
     if (!checkDbReady() || !selectedMachine) return;
-    
-    // NOTA: Em um app real, use um modal de confirmação antes de excluir
     
     const machineRef = doc(db, 'artifacts', appId, 'users', user.uid, 'machines', selectedMachine.id);
     try {
@@ -538,88 +583,137 @@ export default function VendingMachineApp() {
     }
   }
 
-  // --- Views ---
+  // --- Renderização de Views ---
   
-  // BLOQUEIO CRÍTICO: Exibir erro/aviso se o Firebase não pôde ser configurado.
+  // Estilos de container fixos para garantir a aparência mobile
+  const appContainerStyle = {
+    backgroundColor: '#f9fafb', // gray-50
+    minHeight: '100vh',
+    paddingBottom: '80px', // Espaço para a navbar fixa
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    color: '#1f2937', // gray-800
+  };
+
+  const headerStyle = {
+    backgroundColor: '#2563eb', // blue-600
+    color: 'white',
+    padding: '16px',
+    position: 'sticky',
+    top: 0,
+    zIndex: 20,
+    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)',
+  };
+
+  const mainContentStyle = {
+    padding: '16px',
+    maxWidth: '512px', // max-w-lg
+    margin: '0 auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '24px' // space-y-6
+  };
+
+  const navBarStyle = {
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'white',
+    borderTop: '1px solid #e5e7eb', // border-gray-200
+    boxShadow: '0 -10px 15px -3px rgba(0, 0, 0, 0.1)', // shadow-2xl
+    zIndex: 30,
+  };
+
+  // Bloqueio de erro crítico
   if (firebaseError && firebaseError.includes("CRÍTICO")) return (
-    <div className="flex flex-col h-screen items-center justify-center bg-red-50 p-8 text-red-800 text-center font-sans whitespace-pre-wrap rounded-xl m-4 shadow-lg border border-red-300">
-      <AlertTriangle size={32} className="mb-4 text-red-600" />
-      <h2 className="font-bold text-xl mb-3">ERRO CRÍTICO DE CONEXÃO DO FIREBASE</h2>
-      <p className="text-sm leading-relaxed max-w-md">
-        O aplicativo falhou ao inicializar a conexão com o banco de dados.
-      </p>
-      <div className="mt-4 p-3 bg-red-100 rounded-lg text-left text-xs font-mono w-full max-w-sm">
-        <p className="font-semibold mb-1">Detalhes da Falha:</p>
-        <pre className="whitespace-pre-wrap break-words">{firebaseError}</pre>
+    <div style={{
+      display: 'flex', flexDirection: 'column', height: '100vh', alignItems: 'center', justifyContent: 'center', 
+      backgroundColor: '#fef2f2', padding: '32px', color: '#991b1b', textAlign: 'center', 
+      fontFamily: 'sans-serif', whiteSpace: 'pre-wrap', borderRadius: '12px', margin: '16px', 
+      boxShadow: '0 4px 6px rgba(0,0,0,0.1)', border: '1px solid #fca5a5'
+    }}>
+      <AlertTriangle size={32} style={{ marginBottom: '16px', color: '#ef4444' }} />
+      <h2 style={{ fontWeight: 'bold', fontSize: '20px', marginBottom: '12px' }}>ERRO CRÍTICO DE CONEXÃO DO FIREBASE</h2>
+      <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#fee2e2', borderRadius: '8px', textAlign: 'left', fontSize: '12px', fontFamily: 'monospace', width: '100%', maxWidth: '320px' }}>
+        <p style={{ fontWeight: '600', marginBottom: '4px' }}>Detalhes da Falha:</p>
+        <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{firebaseError}</pre>
       </div>
-      <p className="text-sm mt-4 text-red-600">Por favor, corrija o erro de configuração no ambiente para usar o aplicativo.</p>
+      <p style={{ fontSize: '14px', marginTop: '16px', color: '#dc2626' }}>Por favor, corrija o erro de configuração no ambiente para usar o aplicativo.</p>
     </div>
   );
 
-  if (loading) return <div className="flex h-screen items-center justify-center text-blue-600 animate-pulse">Carregando seus negócios...</div>;
+  if (loading) return <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', color: '#2563eb', animation: 'pulse 1.5s infinite' }}>Carregando seus negócios...<style>{`@keyframes pulse {0%, 100% {opacity: 1;} 50% {opacity: .5;}}`}</style></div>;
 
   return (
-    <div className="bg-gray-50 min-h-screen pb-20 font-sans text-gray-800">
-      {/* Header Mobile */}
-      <header className="bg-blue-600 text-white p-4 sticky top-0 z-10 shadow-lg">
-        <div className="flex justify-between items-center max-w-4xl mx-auto">
-          <h1 className="font-bold text-lg flex items-center gap-2">
-            <Coins size={20} />
+    <div style={appContainerStyle}>
+      
+      <header style={headerStyle}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '512px', margin: '0 auto' }}>
+          <h1 style={{ fontWeight: '800', fontSize: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Coins size={24} />
             Vending Manager
           </h1>
-          <div className="text-xs bg-blue-700 px-2 py-1 rounded-full">
-            {stats.totalMachines} Máquinas
+          <div style={{ fontSize: '12px', backgroundColor: '#1d4ed8', padding: '4px 12px', borderRadius: '9999px', fontWeight: '600' }}>
+            {stats.totalMachines} Máqs.
           </div>
         </div>
       </header>
 
-      <main className="p-4 max-w-4xl mx-auto space-y-6">
+      <main style={mainContentStyle}>
         
-        {/* AVISO MOCK (Exibido se estiver usando a config chumbada) */}
+        {/* AVISO MOCK */}
         {firebaseError && firebaseError.includes("MOCK") && (
-          <div className="bg-amber-100 border-l-4 border-amber-500 p-4 rounded-lg text-sm text-amber-900 shadow-sm">
-            <div className="font-bold flex items-center gap-2"><AlertTriangle size={18} /> MODO DE TESTE (MOCK)</div>
-            <p className="mt-1 text-xs whitespace-pre-wrap">{firebaseError}</p>
+          <div style={{ backgroundColor: '#fffbe1', borderLeft: '4px solid #f59e0b', padding: '16px', borderRadius: '8px', fontSize: '14px', color: '#92400e', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+            <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}><AlertTriangle size={18} /> MODO DE TESTE (MOCK)</div>
+            <p style={{ marginTop: '4px', fontSize: '12px', whiteSpace: 'pre-wrap' }}>{firebaseError}</p>
           </div>
         )}
 
         {/* DASHBOARD VIEW */}
         {view === 'dashboard' && (
-          <div className="space-y-6 animate-in fade-in duration-500">
-            {/* AI Assistant Button */}
-            <Card className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white border-none p-5 relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-10">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            
+            {/* AI Assistant Card */}
+            <Card style={{ 
+              background: 'linear-gradient(to right, #7c3aed, #4f46e5)', // violet-600 to indigo-600
+              color: 'white',
+              border: 'none', 
+              padding: '20px', 
+              overflow: 'hidden', 
+              position: 'relative',
+              boxShadow: '0 10px 15px -3px rgba(139, 92, 246, 0.3)',
+            }}>
+              <div style={{ position: 'absolute', top: 0, right: 0, padding: '16px', opacity: 0.1 }}>
                 <Sparkles size={100} />
               </div>
-              <div className="relative z-10">
-                <h3 className="font-bold text-lg flex items-center gap-2 mb-1">
-                  <Sparkles size={20} className="text-yellow-300" /> Consultor IA
+              <div style={{ position: 'relative', zIndex: 10 }}>
+                <h3 style={{ fontWeight: 'bold', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <Sparkles size={20} style={{ color: '#fcd34d' }} /> Consultor IA
                 </h3>
-                <p className="text-violet-100 text-sm mb-4">
-                  Obtenha uma análise estratégica do seu faturamento e alertas de operação.
+                <p style={{ color: '#ddd6fe', fontSize: '14px', marginBottom: '16px' }}>
+                  Obtenha uma análise estratégica e ações prioritárias para hoje.
                 </p>
                 <Button 
                   onClick={handleGlobalAnalysis} 
                   disabled={aiLoading}
-                  className="bg-white/20 hover:bg-white/30 text-white border-none w-full text-sm"
+                  style={{ backgroundColor: 'rgba(255, 255, 255, 0.3)', color: 'white', border: 'none', width: '100%', fontSize: '14px', padding: '8px' }}
                 >
-                  {aiLoading ? "Analisando..." : "Gerar Relatório do Dia"}
+                  {aiLoading ? <Loader2 style={{ animation: 'spin 1s linear infinite' }} size={16} /> : "Gerar Relatório Estratégico"}
                 </Button>
               </div>
             </Card>
 
-            {/* AI Result Box */}
             <AIAnalysisBox content={aiResult} isLoading={aiLoading} onClose={() => setAiResult(null)} />
 
             {/* Resumo Financeiro */}
-            <div className="grid grid-cols-2 gap-3">
-              <Card className="bg-white border-l-4 border-l-blue-600">
-                <span className="text-gray-500 text-xs uppercase font-bold">Faturamento</span>
-                <div className="text-2xl font-bold mt-1 text-gray-800">{formatCurrency(stats.totalRevenue)}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <Card style={{ borderTop: '4px solid #2563eb' }}>
+                <span style={{ color: '#6b7280', fontSize: '12px', textTransform: 'uppercase', fontWeight: 'bold' }}>Faturamento</span>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', marginTop: '4px', color: '#1f2937' }}>{formatCurrency(stats.totalRevenue)}</div>
               </Card>
-              <Card className="bg-white border-l-4 border-l-emerald-500">
-                <span className="text-gray-500 text-xs uppercase font-bold">Lucro Líquido</span>
-                <div className="text-2xl font-bold mt-1 text-gray-800 flex items-center gap-1">
+              <Card style={{ borderTop: '4px solid #10b981' }}>
+                <span style={{ color: '#6b7280', fontSize: '12px', textTransform: 'uppercase', fontWeight: 'bold' }}>Lucro Líquido</span>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', marginTop: '4px', color: '#1f2937', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   {formatCurrency(stats.netProfit)}
                 </div>
               </Card>
@@ -627,37 +721,48 @@ export default function VendingMachineApp() {
 
             {/* Alertas */}
             {(stats.criticalStock > 0 || stats.unprofitable > 0) && (
-              <div className="space-y-3">
-                <h3 className="font-bold text-gray-700 flex items-center gap-2">
-                  <AlertTriangle className="text-amber-500" size={18} /> Ações Necessárias
+              <Card style={{ padding: '12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca' }}>
+                <h3 style={{ fontWeight: 'bold', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <AlertTriangle style={{ color: '#ef4444' }} size={18} /> Alertas de Operação
                 </h3>
                 {stats.criticalStock > 0 && (
-                  <div className="bg-amber-50 border-l-4 border-amber-500 p-3 rounded-r-lg text-sm text-amber-900 flex justify-between items-center">
-                    <span><b>{stats.criticalStock} máquinas</b> precisam de reposição urgente.</span>
-                    <Button variant="secondary" className="text-xs py-1 px-2 h-auto" onClick={() => setView('machines')}>Ver</Button>
+                  <div style={{ fontSize: '14px', color: '#991b1b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderTop: '1px solid #fde0e3', paddingTop: '8px' }}>
+                    <span><b style={{ fontWeight: 'bold' }}>{stats.criticalStock} Máquinas</b> com estoque crítico.</span>
+                    <Button variant="secondary" style={{ fontSize: '12px', padding: '4px 8px', height: 'auto', width: 'auto' }} onClick={() => setView('machines')}>Ver</Button>
                   </div>
                 )}
                 {stats.unprofitable > 0 && (
-                  <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded-r-lg text-sm text-red-900 flex justify-between items-center">
-                    <span><b>{stats.unprofitable} máquinas</b> com baixo rendimento. Considere mudar de local.</span>
-                    <Button variant="secondary" className="text-xs py-1 px-2 h-auto" onClick={() => setView('machines')}>Ver</Button>
+                  <div style={{ fontSize: '14px', color: '#991b1b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderTop: '1px solid #fde0e3', paddingTop: '8px', marginTop: '8px' }}>
+                    <span><b style={{ fontWeight: 'bold' }}>{stats.unprofitable} Máquinas</b> de baixo rendimento.</span>
+                    <Button variant="secondary" style={{ fontSize: '12px', padding: '4px 8px', height: 'auto', width: 'auto' }} onClick={() => setView('machines')}>Ver</Button>
                   </div>
                 )}
-              </div>
+              </Card>
             )}
 
             {/* Gráfico */}
             <Card>
-              <h3 className="font-bold text-gray-700 mb-4">Fluxo de Caixa (Últimos Lançamentos)</h3>
-              <div className="h-48 w-full -ml-4">
+              <h3 style={{ fontWeight: 'bold', color: '#4b5563', marginBottom: '16px' }}>Fluxo de Caixa Recente</h3>
+              <div style={{ height: '224px', width: '100%' }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  {/* Gráfico de Linha com as 10 últimas transações */}
                   <LineChart data={[...transactions].reverse().slice(-10)}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee" />
-                    <XAxis dataKey="date" tickFormatter={(date) => new Date(date).getDate() + '/' + (new Date(date).getMonth() + 1)} tick={{fontSize: 10}} />
-                    <YAxis tick={{fontSize: 10}} />
-                    <RechartsTooltip formatter={(value) => formatCurrency(value)} />
-                    <Line type="monotone" dataKey="amount" stroke="#2563eb" strokeWidth={2} dot={false} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis 
+                        dataKey="date" 
+                        tickFormatter={(date) => new Date(date).getDate() + '/' + (new Date(date).getMonth() + 1)} 
+                        tick={{fontSize: 10}} 
+                        padding={{ left: 20, right: 20 }}
+                        minTickGap={10}
+                    />
+                    <YAxis 
+                        tick={{fontSize: 10}} 
+                        tickFormatter={(value) => formatCurrency(value).replace('R$', '')}
+                    />
+                    <RechartsTooltip 
+                      formatter={(value) => [formatCurrency(value), 'Faturamento']} 
+                      labelFormatter={(label) => new Date(label).toLocaleDateString('pt-BR')}
+                    />
+                    <Line type="monotone" dataKey="amount" stroke="#10b981" strokeWidth={3} dot={{ stroke: '#10b981', strokeWidth: 2, r: 4 }} activeDot={{ r: 6 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -667,57 +772,59 @@ export default function VendingMachineApp() {
 
         {/* LISTA DE MÁQUINAS VIEW */}
         {view === 'machines' && (
-          <div className="space-y-4 animate-in slide-in-from-right-10 duration-300">
-            <div className="flex justify-between items-center">
-              <h2 className="font-bold text-gray-700 text-lg">Suas Máquinas</h2>
-              <Button onClick={() => setView('add-machine')} variant="primary" className="text-sm px-3">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontWeight: 'bold', color: '#4b5563', fontSize: '18px' }}>Suas Máquinas ({machines.length})</h2>
+              <Button onClick={() => setView('add-machine')} variant="primary" style={{ fontSize: '14px', padding: '8px 12px', width: 'auto' }}>
                 <Plus size={16} /> Nova
               </Button>
             </div>
 
-            <div className="grid gap-3">
+            <div style={{ display: 'grid', gap: '16px' }}>
               {machines.map(machine => {
                 const stockPercent = (machine.currentStock / machine.capacity) * 100;
                 const isCritical = stockPercent < 25;
-                const statusColor = isCritical ? 'bg-red-500' : (stockPercent < 50 ? 'bg-amber-500' : 'bg-emerald-500');
+                const statusColor = isCritical ? '#ef4444' : (stockPercent < 50 ? '#f59e0b' : '#10b981'); // red, amber, emerald
 
                 return (
-                  <Card key={machine.id} className="active:scale-[0.99] transition-transform cursor-pointer hover:shadow-md p-0 overflow-hidden">
-                    <div onClick={() => { setSelectedMachine(machine); setView('details'); }} className="p-4">
-                      <div className="flex justify-between items-start mb-2">
+                  <Card key={machine.id} style={{ padding: 0, overflow: 'hidden', cursor: 'pointer' }}>
+                    <div onClick={() => { setSelectedMachine(machine); setView('details'); }} style={{ padding: '16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                         <div>
-                          <h3 className="font-bold text-gray-800">{machine.name}</h3>
-                          <div className="flex items-center text-xs text-gray-500 mt-1 gap-1">
-                            <MapPin size={12} /> {machine.location}
+                          <h3 style={{ fontWeight: 'bold', color: '#1f2937' }}>{machine.name}</h3>
+                          <div style={{ display: 'flex', alignItems: 'center', fontSize: '12px', color: '#6b7280', marginTop: '4px', gap: '4px' }}>
+                            <MapPin size={12} style={{ color: '#60a5fa' }} /> {machine.location}
                           </div>
                         </div>
-                        <div className={`px-2 py-1 rounded text-xs font-bold text-white ${statusColor}`}>
-                          {stockPercent.toFixed(0)}% Estoque
+                        <div style={{ padding: '4px 8px', borderRadius: '9999px', fontSize: '12px', fontWeight: 'bold', color: 'white', backgroundColor: statusColor }}>
+                          {stockPercent.toFixed(0)}%
                         </div>
                       </div>
                       
-                      <div className="flex justify-between items-end mt-3">
-                        <div className="text-xs text-gray-500">
-                           {machine.type} • {formatCurrency(machine.pricePerPlay)}/play
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '12px', borderTop: '1px solid #f3f4f6', paddingTop: '12px' }}>
+                        <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                          {machine.type} • {formatCurrency(machine.pricePerPlay)}/play
                         </div>
-                        <div className="text-blue-600 text-sm font-semibold flex items-center gap-1">
-                          Gerenciar <ArrowUpRight size={14} />
+                        <div style={{ color: '#2563eb', fontSize: '14px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          Detalhes <ArrowUpRight size={14} />
                         </div>
                       </div>
                     </div>
                     {/* Progress Bar Visual */}
-                    <div className="h-1 w-full bg-gray-100">
+                    <div style={{ height: '4px', width: '100%', backgroundColor: '#f3f4f6' }}>
                       <div 
-                        className={`h-full transition-all duration-500 ${statusColor}`} 
-                        style={{ width: `${stockPercent}%` }}
+                        style={{ height: '100%', transition: 'all 0.5s', backgroundColor: statusColor, width: `${stockPercent}%` }}
                       />
                     </div>
                   </Card>
                 );
               })}
               {machines.length === 0 && (
-                <div className="text-center py-10 text-gray-400">
-                  Nenhuma máquina cadastrada.
+                <div style={{ textAlign: 'center', padding: '40px', color: '#9ca3af', border: '2px dashed #d1d5db', borderRadius: '12px' }}>
+                  <p style={{ marginBottom: '8px' }}>Nenhuma máquina cadastrada.</p>
+                  <Button onClick={() => setView('add-machine')} variant="secondary" style={{ fontSize: '14px', width: 'auto', padding: '8px 16px' }}>
+                    <Plus size={16} /> Adicionar Agora
+                  </Button>
                 </div>
               )}
             </div>
@@ -726,48 +833,49 @@ export default function VendingMachineApp() {
 
         {/* DETALHES DA MÁQUINA VIEW */}
         {view === 'details' && selectedMachine && (
-          <div className="space-y-5 animate-in slide-in-from-right-10 duration-300">
-            <div className="flex items-center gap-2 mb-2">
-              <button onClick={() => setView('machines')} className="text-gray-500 hover:text-gray-800">
-                &larr; Voltar
-              </button>
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <button 
+                onClick={() => setView('machines')} 
+                style={{ color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: '500', transition: 'color 0.2s', background: 'none', border: 'none', cursor: 'pointer' }}
+            >
+              <ChevronLeft size={16} /> Voltar à Lista
+            </button>
 
-            <Card className="border-t-4 border-t-blue-500">
-              <div className="flex justify-between">
+            <Card style={{ borderTop: '4px solid #2563eb' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                    <h2 className="text-xl font-bold">{selectedMachine.name}</h2>
-                    <p className="text-sm text-gray-500 flex items-center gap-1"><MapPin size={14}/> {selectedMachine.location}</p>
+                    <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1f2937' }}>{selectedMachine.name}</h2>
+                    <p style={{ fontSize: '14px', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px' }}><MapPin size={14} style={{ color: '#3b82f6' }}/> {selectedMachine.location}</p>
                 </div>
-                <div className="text-right">
-                  <div className="text-xs text-gray-500">Estoque Atual</div>
-                  <div className={`text-xl font-bold ${selectedMachine.currentStock < selectedMachine.capacity * 0.25 ? 'text-red-500' : 'text-emerald-600'}`}>
+                <div style={{ textAlign: 'right', backgroundColor: '#eff6ff', padding: '12px', borderRadius: '12px', border: '1px solid #bfdbfe' }}>
+                  <div style={{ fontSize: '12px', color: '#2563eb', fontWeight: '600', textTransform: 'uppercase' }}>Estoque</div>
+                  <div style={{ fontSize: '20px', fontWeight: 'bold', marginTop: '4px', color: selectedMachine.currentStock < selectedMachine.capacity * 0.25 ? '#dc2626' : '#059669' }}>
                     {selectedMachine.currentStock}/{selectedMachine.capacity}
                   </div>
                 </div>
               </div>
               
-              <div className="mt-6 grid grid-cols-2 gap-2">
-                   <div className="bg-gray-50 p-3 rounded-lg text-center">
-                     <span className="block text-xs text-gray-500">Preço Venda</span>
-                     <strong className="text-gray-800">{formatCurrency(selectedMachine.pricePerPlay)}</strong>
-                   </div>
-                   <div className="bg-gray-50 p-3 rounded-lg text-center">
-                     <span className="block text-xs text-gray-500">Custo Produto</span>
-                     <strong className="text-gray-800">{formatCurrency(selectedMachine.costPerItem)}</strong>
-                   </div>
+              <div style={{ marginTop: '24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', borderTop: '1px solid #f3f4f6', paddingTop: '16px' }}>
+                  <div style={{ backgroundColor: '#f9fafb', padding: '12px', borderRadius: '12px', textAlign: 'center', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)' }}>
+                    <span style={{ display: 'block', fontSize: '12px', color: '#6b7280', textTransform: 'uppercase' }}>Preço Venda</span>
+                    <strong style={{ color: '#1f2937', fontSize: '18px' }}>{formatCurrency(selectedMachine.pricePerPlay)}</strong>
+                  </div>
+                  <div style={{ backgroundColor: '#f9fafb', padding: '12px', borderRadius: '12px', textAlign: 'center', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)' }}>
+                    <span style={{ display: 'block', fontSize: '12px', color: '#6b7280', textTransform: 'uppercase' }}>Custo Produto</span>
+                    <strong style={{ color: '#1f2937', fontSize: '18px' }}>{formatCurrency(selectedMachine.costPerItem)}</strong>
+                  </div>
               </div>
 
               {/* Botão AI Machine Analysis */}
-              <div className="mt-4 pt-4 border-t border-gray-100">
+              <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #f3f4f6' }}>
                 <Button 
                   onClick={handleMachineAnalysis} 
                   disabled={aiLoading}
                   variant="ai"
-                  className="w-full text-sm py-2"
+                  style={{ width: '100%', fontSize: '14px', padding: '8px' }}
                 >
-                  <Lightbulb size={16} className="text-yellow-200" /> 
-                  {aiLoading ? "Analisando..." : "Auditar este Ponto com IA"}
+                  <Lightbulb size={16} style={{ color: '#facc15' }} /> 
+                  {aiLoading ? "Consultando Ponto..." : "Auditar este Ponto com IA"}
                 </Button>
                 <AIAnalysisBox content={aiResult} isLoading={aiLoading} onClose={() => setAiResult(null)} />
               </div>
@@ -775,10 +883,10 @@ export default function VendingMachineApp() {
 
             {/* Formulário de Coleta Rápida */}
             <Card>
-              <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2">
-                <TrendingUp className="text-blue-600" size={18} /> Nova Coleta / Visita
+              <h3 style={{ fontWeight: 'bold', color: '#4b5563', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <TrendingUp style={{ color: '#2563eb' }} size={18} /> Registrar Coleta / Reposição
               </h3>
-              <form onSubmit={handleAddCollection} className="space-y-4">
+              <form onSubmit={handleAddCollection} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <Input 
                   label="Valor Retirado (R$)" 
                   name="amount" 
@@ -792,44 +900,46 @@ export default function VendingMachineApp() {
                   name="restock" 
                   type="number" 
                   placeholder="0" 
+                  min="0"
                 />
-                <Button variant="success" className="w-full mt-4 py-3">
-                  Confirmar Coleta
+                <Button variant="success" style={{ width: '100%', marginTop: '16px', padding: '12px', boxShadow: '0 4px 6px -1px rgba(52, 211, 153, 0.5)' }}>
+                  Confirmar Coleta e Atualizar Estoque
                 </Button>
               </form>
             </Card>
 
             {/* Histórico Recente da Máquina */}
             <div>
-              <h3 className="font-bold text-gray-600 text-sm uppercase mb-3 ml-1">Histórico Recente</h3>
-              <div className="space-y-2">
+              <h3 style={{ fontWeight: 'bold', color: '#4b5563', fontSize: '14px', textTransform: 'uppercase', marginBottom: '12px', marginLeft: '4px' }}>Histórico (Últimas 5)</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {transactions
                   .filter(t => t.machineId === selectedMachine.id)
                   .slice(0, 5)
                   .map(t => (
-                  <div key={t.id} className="bg-white p-3 rounded-lg border border-gray-100 flex justify-between items-center text-sm shadow-sm">
+                  <div key={t.id} style={{ backgroundColor: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '14px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
                     <div>
-                      <div className="font-semibold text-gray-700">Coleta</div>
-                      <div className="text-xs text-gray-400">
-                        {new Date(t.date).toLocaleDateString()} às {new Date(t.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      <div style={{ fontWeight: '600', color: '#4b5563' }}>
+                        {t.type === 'collection' ? 'Coleta de Vendas' : 'Transação'}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '2px' }}>
+                        {new Date(t.date).toLocaleDateString('pt-BR')} | {new Date(t.date).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
                       </div>
                     </div>
-                    <div className="text-right">
-                       <div className="text-emerald-600 font-bold">+ {formatCurrency(t.amount)}</div>
-                       {t.restocked > 0 && <div className="text-xs text-blue-500">+{t.restocked} itens</div>}
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ color: '#059669', fontWeight: 'bold', fontSize: '16px' }}>+ {formatCurrency(t.amount)}</div>
+                      {t.restocked > 0 && <div style={{ fontSize: '12px', color: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>+{t.restocked} itens</div>}
                     </div>
                   </div>
                 ))}
                 {transactions.filter(t => t.machineId === selectedMachine.id).length === 0 && (
-                   <p className="text-center text-sm text-gray-400 py-4">Nenhum registro ainda.</p>
+                  <p style={{ textAlign: 'center', fontSize: '14px', color: '#9ca3af', padding: '16px', border: '2px dashed #e5e7eb', borderRadius: '8px' }}>Nenhum registro ainda para esta máquina.</p>
                 )}
               </div>
             </div>
 
-            <div className="pt-4 border-t border-gray-200">
-              {/* Em um app real, aqui você implementaria um modal de confirmação */}
-              <Button variant="danger" onClick={handleDeleteMachine} className="w-full text-sm">
-                  <Trash2 size={16} /> Remover Máquina
+            <div style={{ paddingTop: '16px', marginTop: '32px', borderTop: '1px solid #e5e7eb' }}>
+              <Button variant="danger" onClick={handleDeleteMachine} style={{ width: '100%', fontSize: '14px' }}>
+                  <Trash2 size={16} /> Remover Máquina Permanentemente
               </Button>
             </div>
           </div>
@@ -837,68 +947,75 @@ export default function VendingMachineApp() {
 
         {/* ADICIONAR MÁQUINA VIEW */}
         {view === 'add-machine' && (
-          <div className="space-y-4 animate-in slide-in-from-bottom-10 duration-300">
-            <div className="flex items-center gap-2 mb-2">
-              <button onClick={() => setView('machines')} className="text-gray-500 hover:text-gray-800">
-                &larr; Cancelar
-              </button>
-            </div>
-            <h2 className="text-xl font-bold text-gray-800">Nova Máquina</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <button 
+                onClick={() => setView('machines')} 
+                style={{ color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: '500', transition: 'color 0.2s', background: 'none', border: 'none', cursor: 'pointer' }}
+            >
+              <ChevronLeft size={16} /> Cancelar Cadastro
+            </button>
+            <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1f2937' }}>Nova Máquina</h2>
             <Card>
-              <form onSubmit={handleAddMachine} className="space-y-4">
-                <Input label="Nome / Identificação" name="name" placeholder="Ex: Máquina 01 - Padaria" required />
+              <form onSubmit={handleAddMachine} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <Input label="Nome / Identificação" name="name" placeholder="Ex: Máquina 01 - Padaria Central" required />
                 <Input label="Localização" name="location" placeholder="Ex: Rua das Flores, 123" required />
-                <div className="grid grid-cols-2 gap-4">
-                   <Input label="Tipo" name="type" placeholder="Ex: Bolinha, Pokemon" defaultValue="Bolinha" />
-                   <Input label="Capacidade Total" name="capacity" type="number" defaultValue="200" required />
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <Input label="Tipo de Produto" name="type" placeholder="Ex: Bolinha, Pokemon" defaultValue="Bolinha" />
+                  <Input label="Capacidade Total (Qtd)" name="capacity" type="number" defaultValue="200" required min="1" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                   <Input label="Preço da Jogada (R$)" name="price" type="number" step="0.50" defaultValue="2.00" required />
-                   <Input label="Custo Unitário do Item (R$)" name="cost" type="number" step="0.01" defaultValue="0.50" required />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <Input label="Preço da Jogada (R$)" name="price" type="number" step="0.01" defaultValue="2.00" required min="0.01" />
+                  <Input label="Custo Unitário do Item (R$)" name="cost" type="number" step="0.01" defaultValue="0.50" required min="0.01" />
                 </div>
-                <Button className="w-full mt-4 py-3">Cadastrar Máquina</Button>
+                <Button variant="primary" style={{ width: '100%', marginTop: '16px', padding: '12px', boxShadow: '0 4px 6px -1px rgba(59, 130, 246, 0.5)' }}>
+                  <Plus size={18} /> Cadastrar Máquina
+                </Button>
               </form>
             </Card>
           </div>
         )}
 
-        {/* --- Diagnóstico de Conexão (Para Teste) --- */}
-        <div className="pt-8 text-center text-xs text-gray-400 space-y-1">
-          <div className={`flex items-center justify-center gap-1 ${user ? 'text-emerald-500' : 'text-amber-500'}`}>
+        {/* --- Diagnóstico de Conexão --- */}
+        <div style={{ paddingTop: '32px', textAlign: 'center', fontSize: '12px', color: '#9ca3af', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', color: user ? '#10b981' : '#f59e0b' }}>
             <Wifi size={12} />
-            Status: {user ? 'Conectado (Firebase Auth OK)' : 'Aguardando autenticação...'}
+            Status: {user ? 'Conectado (Auth OK)' : 'Aguardando autenticação...'}
           </div>
-          <p className="truncate px-4">UID: {user ? user.uid : 'Aguardando autenticação...'}</p>
+          <p style={{ overflowWrap: 'break-word', padding: '0 16px' }}>UID: {user ? user.uid : 'Aguardando ID...'}</p>
         </div>
 
       </main>
 
-      {/* Navegação Inferior (App Style) */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg pb-safe">
-        <div className="flex justify-around items-center max-w-4xl mx-auto">
+      {/* Navegação Inferior Fixa */}
+      <nav style={navBarStyle}>
+        <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', maxWidth: '512px', margin: '0 auto' }}>
+          {/* Dashboard Button */}
           <button 
             onClick={() => setView('dashboard')}
-            className={`p-4 flex flex-col items-center gap-1 ${view === 'dashboard' ? 'text-blue-600' : 'text-gray-400'}`}
+            style={{ padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', transition: 'color 0.2s', color: view === 'dashboard' ? '#2563eb' : '#9ca3af' }}
           >
-            <LayoutDashboard size={20} />
-            <span className="text-[10px] font-medium">Início</span>
+            <LayoutDashboard size={22} />
+            <span style={{ fontSize: '10px', fontWeight: '500' }}>Início</span>
           </button>
           
-          <div className="relative -top-5">
+          {/* Add Button (Floating) */}
+          <div style={{ position: 'relative', top: '-16px' }}>
             <button 
               onClick={() => setView('add-machine')}
-              className="bg-blue-600 text-white p-4 rounded-full shadow-lg shadow-blue-200 hover:scale-105 transition-transform"
+              style={{ backgroundColor: '#2563eb', color: 'white', padding: '16px', borderRadius: '9999px', boxShadow: '0 10px 15px -3px rgba(59, 130, 246, 0.5)', transition: 'transform 0.2s', border: 'none', cursor: 'pointer' }}
             >
               <Plus size={24} />
             </button>
           </div>
 
+          {/* Machines Button */}
           <button 
             onClick={() => setView('machines')}
-            className={`p-4 flex flex-col items-center gap-1 ${view === 'machines' || view === 'details' || view === 'add-machine' ? 'text-blue-600' : 'text-gray-400'}`}
+            style={{ padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', transition: 'color 0.2s', color: view === 'machines' || view === 'details' || view === 'add-machine' ? '#2563eb' : '#9ca3af' }}
           >
-            <Package size={20} />
-            <span className="text-[10px] font-medium">Máquinas</span>
+            <Package size={22} />
+            <span style={{ fontSize: '10px', fontWeight: '500' }}>Máquinas</span>
           </button>
         </div>
       </nav>
