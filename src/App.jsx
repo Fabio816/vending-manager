@@ -49,14 +49,14 @@ import {
   ArrowDownRight,
   Sparkles,
   Loader2,
-  Lightbulb
+  Lightbulb,
+  Wifi
 } from 'lucide-react';
 
-// --- Variáveis Hardcoded do Firebase (a pedido do usuário) ---
+// --- Variáveis de Ambiente (Garantidas pelo Canvas) ---
 
-// Usando o Project ID como o identificador da aplicação para as coleções do Firestore
-const appId = "vending-manager-app-cc60b";
-
+// Usando um fallback caso a variável do ambiente não esteja definida (muito improvável)
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'vending-manager-app-default';
 const apiKey = ""; // Mantemos vazia, a plataforma injeta para o Gemini API
 
 /**
@@ -181,29 +181,27 @@ export default function VendingMachineApp() {
   const [transactions, setTransactions] = useState([]);
   const [selectedMachine, setSelectedMachine] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [db, setDb] = useState(null); // Adicionado estado para DB
-  const [auth, setAuth] = useState(null); // Adicionado estado para Auth
+  const [db, setDb] = useState(null); 
+  const [auth, setAuth] = useState(null); 
   
   // AI States
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState(null);
-  const [firebaseError, setFirebaseError] = useState(null); // Novo estado para erros de Firebase
+  const [firebaseError, setFirebaseError] = useState(null);
 
-  // --- Autenticação e Inicialização do Firebase (AGORA HARDCODED) ---
+  // --- Autenticação e Inicialização do Firebase (AGORA USANDO VARIAVEIS GLOBAIS) ---
   
   useEffect(() => {
     const initializeFirebase = async () => {
       try {
-        // Configuração Hardcoded (A pedido do usuário, removendo dependência de __firebase_config)
-        const firebaseConfig = {
-            apiKey: "AIzaSyA8ly0McGkwbo-JiJsF0ZzAXMA30Mysvvo",
-            authDomain: "vending-manager-app-cc60b.firebaseapp.com",
-            projectId: "vending-manager-app-cc60b",
-            storageBucket: "vending-manager-app-cc60b.firebasestorage.app",
-            messagingSenderId: "686687292222",
-            appId: "1:686687292222:web:847db02734c30b9f8f7a6f"
-        };
+        // Tentar buscar a configuração do ambiente, com fallback seguro.
+        const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+        const firebaseConfig = JSON.parse(firebaseConfigString);
         
+        if (!firebaseConfig.projectId) {
+            throw new Error("Configuração do Firebase inválida ou ausente.");
+        }
+
         // Inicializar o App Firebase (evitando inicialização duplicada)
         const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
         const authInstance = getAuth(app);
@@ -214,7 +212,6 @@ export default function VendingMachineApp() {
         setDb(firestoreInstance);
         
         // Autenticação (Custom Token ou Anônima)
-        // O token customizado '__initial_auth_token' ainda é preferido se disponível
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         if (initialAuthToken) {
@@ -232,8 +229,9 @@ export default function VendingMachineApp() {
 
       } catch (e) {
         console.error("Erro CRÍTICO ao inicializar o Firebase:", e);
-        setFirebaseError(`Erro de inicialização do Firebase: ${e.message}`);
-        setLoading(false); // Parar o loading mesmo com erro
+        // Exibe o erro de forma clara na UI
+        setFirebaseError(`Erro de conexão:\n${e.message}\n\nO aplicativo precisa de uma configuração válida do Firebase.`);
+        setLoading(false); 
       }
     };
     
@@ -455,7 +453,7 @@ export default function VendingMachineApp() {
   const handleDeleteMachine = async () => {
     if (!user || !db || !selectedMachine) return;
     
-    console.log("Confirmar exclusão de máquina. (Em um app real, use um modal UI)");
+    // NOTA: Em um app real, use um modal de confirmação antes de excluir
     
     const machineRef = doc(db, 'artifacts', appId, 'users', user.uid, 'machines', selectedMachine.id);
     try {
@@ -470,7 +468,11 @@ export default function VendingMachineApp() {
 
   // --- Views ---
 
-  if (firebaseError) return <div className="flex h-screen items-center justify-center bg-red-100 p-8 text-red-800 text-center font-mono whitespace-pre-wrap rounded-xl m-4 shadow-lg">{firebaseError}</div>;
+  if (firebaseError) return <div className="flex h-screen items-center justify-center bg-red-100 p-8 text-red-800 text-center font-mono whitespace-pre-wrap rounded-xl m-4 shadow-lg">
+    <AlertTriangle size={24} className="mb-4" />
+    <h2 className="font-bold text-xl mb-2">ERRO CRÍTICO DE CONEXÃO</h2>
+    <p>{firebaseError}</p>
+  </div>;
 
   if (loading) return <div className="flex h-screen items-center justify-center text-blue-600 animate-pulse">Carregando seus negócios...</div>;
 
@@ -768,6 +770,15 @@ export default function VendingMachineApp() {
             </Card>
           </div>
         )}
+
+        {/* --- Diagnóstico de Conexão (Para Teste) --- */}
+        <div className="pt-8 text-center text-xs text-gray-400 space-y-1">
+          <div className={`flex items-center justify-center gap-1 ${user ? 'text-emerald-500' : 'text-amber-500'}`}>
+            <Wifi size={12} />
+            Status: {user ? 'Conectado (Firebase Auth OK)' : 'Conectando...'}
+          </div>
+          <p className="truncate px-4">UID: {user ? user.uid : 'Aguardando autenticação...'}</p>
+        </div>
 
       </main>
 
